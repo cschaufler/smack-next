@@ -53,6 +53,21 @@ static u32 smack_next_secid = 10;
 int log_policy = SMACK_AUDIT_DENIED;
 #endif /* CONFIG_AUDIT */
 
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+bool development __initdata = false;
+static int __init smk_develop_setup(char *str)
+{
+	bool val;
+	int rc;
+
+	rc = kstrtobool(str, &val);
+	if (rc == 0)
+		development = val;
+	return rc;
+}
+__setup("lsm.smack.develop", smk_develop_setup);
+#endif /* CONFIG_SECURITY_SMACK_DEVELOP */
+
 /**
  * smk_access_entry - look up matching access rule
  * @subject_label: a pointer to the subject's Smack label
@@ -222,6 +237,11 @@ int smk_access(struct smack_known *subject, struct smack_known *object,
 			  request, rc, a);
 #endif
 
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+	if (development && rc < 0)
+		rc = SMACK_BRINGUP_ALLOW;
+#endif
+
 	return rc;
 }
 
@@ -275,6 +295,12 @@ out_audit:
 		smack_log(sbj_known->smk_known, obj_known->smk_known,
 			  mode, rc, a);
 #endif
+
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+	if (development && rc < 0)
+		rc = SMACK_BRINGUP_ALLOW;
+#endif
+
 	return rc;
 }
 
