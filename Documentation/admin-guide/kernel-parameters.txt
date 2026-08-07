@@ -3735,6 +3735,10 @@ Kernel parameters
 
 	lsm.debug	[SECURITY] Enable LSM initialization debugging output.
 
+	lsm.smack.sanitize
+			[SECURITY] When CONFIG_SECURITY_SMACK_SANITIZE is set,
+			enable Smack sanitizing.
+
 	lsm=lsm1,...,lsmN
 			[SECURITY] Choose order of LSM initialization. This
 			overrides CONFIG_LSM, and the "security=" parameter.
