@@ -61,7 +61,10 @@ enum smk_inos {
 #if IS_ENABLED(CONFIG_IPV6)
 	SMK_NET6ADDR	= 23,	/* single label IPv6 hosts */
 #endif /* CONFIG_IPV6 */
-	SMK_RELABEL_SELF = 24, /* relabel possible without CAP_MAC_ADMIN */
+	SMK_RELABEL_SELF = 24,	/* relabel possible without CAP_MAC_ADMIN */
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+	SMK_DEVELOP	= 25,	/* develop mode control */
+#endif /* CONFIG_SECURITY_SMACK_DEVELOP */
 };
 
 /*
@@ -2127,6 +2130,61 @@ static const struct file_operations smk_logging_ops = {
 };
 #endif /* CONFIG_AUDIT */
 
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+/* defined in smack_access.c */
+extern bool development;
+
+/**
+ * smk_read_develop - read() for smackfs/develop
+ * @filp: file pointer, not actually used
+ * @buf: where to put the result
+ * @cn: maximum to send along
+ * @ppos: where to start
+ *
+ * Returns number of bytes read or error code, as appropriate
+ */
+static ssize_t smk_read_develop(struct file *filp, char __user *buf,
+					size_t cn, loff_t *ppos)
+{
+	char car = development ? '1' : '0';
+	return simple_read_from_buffer(buf, cn, ppos, &car, 1);
+}
+
+/**
+ * smk_write_develop - write() for smackfs/develop
+ * @file: file pointer, not actually used
+ * @buf: where to get the data from
+ * @count: bytes sent
+ * @ppos: where to start
+ *
+ * Returns number of bytes written or error code, as appropriate
+ */
+static ssize_t smk_write_develop(struct file *file, const char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	char data[2];
+	ssize_t rc = -EINVAL;
+
+	if (ppos == 0 && count >= 1 && count <= 2) {
+		if (copy_from_user(data, buf, count) != 0)
+			rc = -EFAULT;
+		else if (data[0] == '0' && (count == 1 || data[1] == '\n')) {
+			development = 0;
+			*ppos = count;
+			rc = (ssize_t)count;
+		}
+	}
+
+	return rc;
+}
+
+static const struct file_operations smk_develop_ops = {
+	.read		= smk_read_develop,
+	.write		= smk_write_develop,
+	.llseek		= default_llseek,
+};
+#endif /* CONFIG_SECURITY_SMACK_DEVELOP */
+
 /*
  * Seq_file read operations for /smack/load-self
  */
@@ -2843,6 +2901,10 @@ static int smk_fill_super(struct super_block *sb, struct fs_context *fc)
 		[SMK_RELABEL_SELF] = {
 			"relabel-self", &smk_relabel_self_ops,
 				S_IRUGO|S_IWUGO},
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+		[SMK_DEVELOP] = {
+			"develop", &smk_develop_ops, S_IRUGO|S_IWUSR},
+#endif /* CONFIG_SECURITY_SMACK_DEVELOP */
 		/* last one */
 			{""}
 	};

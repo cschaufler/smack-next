@@ -53,3 +53,18 @@ config SECURITY_SMACK_APPEND_SIGNALS
 	  to differentiate between delivering a network packet and
 	  delivering a signal in the Smack rules.
 	  If you are unsure how to answer this question, answer N.
+
+config SECURITY_SMACK_DEVELOP
+	bool "Smack Development Mode"
+	depends on SECURITY_SMACK
+	default n
+	help
+	  This setting is intended to help setting up BSP based on smack.
+	  It transforms denied checks, logged in audit if audit is allowed,
+	  to bringup allowed checks, reported as bringup if bringup is allowed
+	  (see SECURITY_SMACK_BRINGUP).
+
+	  The development mode is activated only if the command line of the kernel
+	  has "lsm.smack.develop=1". When activated, it is deactivated by writing 0
+	  to /sys/fs/smack/develop. After being deactivated, develop mode can not be
+	  reactivated.

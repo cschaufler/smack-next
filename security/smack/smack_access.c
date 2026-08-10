@@ -53,6 +53,21 @@ static u32 smack_next_secid = 10;
 int log_policy = SMACK_AUDIT_DENIED;
 #endif /* CONFIG_AUDIT */
 
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+bool development __initdata = false;
+static int __init smk_develop_setup(char *str)
+{
+	bool val;
+	int rc;
+
+	rc = kstrtobool(str, &val);
+	if (rc == 0)
+		development = val;
+	return rc;
+}
+__setup("lsm.smack.develop", smk_develop_setup);
+#endif /* CONFIG_SECURITY_SMACK_DEVELOP */
+
 /**
  * smk_access_entry - look up matching access rule
  * @subject_label: a pointer to the subject's Smack label
@@ -102,11 +117,10 @@ int smk_access_entry(char *subject_label, char *object_label,
 }
 
 /**
- * smk_access - determine if a subject has a specific access to an object
+ * smk_may - determine if a subject has a specific access to an object
  * @subject: a pointer to the subject's Smack label entry
  * @object: a pointer to the object's Smack label entry
  * @request: the access requested, in "MAY" format
- * @a : a pointer to the audit data
  *
  * This function looks up the subject/object pair in the
  * access rule list and returns 0 if the access is permitted,
@@ -114,8 +128,8 @@ int smk_access_entry(char *subject_label, char *object_label,
  *
  * Smack labels are shared on smack_list
  */
-int smk_access(struct smack_known *subject, struct smack_known *object,
-	       int request, struct smk_audit_info *a)
+static int smk_may(struct smack_known *subject, struct smack_known *object,
+	       int request)
 {
 	int may = MAY_NOT;
 	int rc = 0;
@@ -128,7 +142,7 @@ int smk_access(struct smack_known *subject, struct smack_known *object,
 	 */
 	if (subject == &smack_known_star) {
 		rc = -EACCES;
-		goto out_audit;
+		goto end;
 	}
 	/*
 	 * An internet object can be accessed by any subject.
@@ -136,18 +150,18 @@ int smk_access(struct smack_known *subject, struct smack_known *object,
 	 * An internet subject can access any object.
 	 */
 	if (object == &smack_known_web || subject == &smack_known_web)
-		goto out_audit;
+		goto end;
 	/*
 	 * A star object can be accessed by any subject.
 	 */
 	if (object == &smack_known_star)
-		goto out_audit;
+		goto end;
 	/*
 	 * An object can be accessed in any way by a subject
 	 * with the same label.
 	 */
 	if (subject->smk_known == object->smk_known)
-		goto out_audit;
+		goto end;
 	/*
 	 * A hat subject can read or lock any object.
 	 * A floor object can be read or locked by any subject.
@@ -155,9 +169,9 @@ int smk_access(struct smack_known *subject, struct smack_known *object,
 	if ((request & MAY_ANYREAD) == request ||
 	    (request & MAY_LOCK) == request) {
 		if (object == &smack_known_floor)
-			goto out_audit;
+			goto end;
 		if (subject == &smack_known_hat)
-			goto out_audit;
+			goto end;
 	}
 	/*
 	 * Beyond here an explicit relationship is required.
@@ -173,7 +187,7 @@ int smk_access(struct smack_known *subject, struct smack_known *object,
 
 	if (may <= 0 || (request & may) != request) {
 		rc = -EACCES;
-		goto out_audit;
+		goto end;
 	}
 #ifdef CONFIG_SECURITY_SMACK_BRINGUP
 	/*
@@ -185,7 +199,7 @@ int smk_access(struct smack_known *subject, struct smack_known *object,
 		rc = SMACK_BRINGUP_ALLOW;
 #endif
 
-out_audit:
+end:
 
 #ifdef CONFIG_SECURITY_SMACK_BRINGUP
 	if (rc < 0) {
@@ -196,10 +210,36 @@ out_audit:
 	}
 #endif
 
+	return rc;
+}
+
+/**
+ * smk_access - determine if a subject has a specific access to an object
+ * @subject: a pointer to the subject's Smack label entry
+ * @object: a pointer to the object's Smack label entry
+ * @request: the access requested, in "MAY" format
+ * @a : a pointer to the audit data
+ *
+ * This function looks up the subject/object pair in the
+ * access rule list and returns 0 if the access is permitted,
+ * non zero otherwise.
+ *
+ * Smack labels are shared on smack_list
+ */
+int smk_access(struct smack_known *subject, struct smack_known *object,
+	       int request, struct smk_audit_info *a)
+{
+	int rc = smk_may(subject, object, request);
+
 #ifdef CONFIG_AUDIT
 	if (a)
 		smack_log(subject->smk_known, object->smk_known,
 			  request, rc, a);
+#endif
+
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+	if (development && rc < 0)
+		rc = SMACK_BRINGUP_ALLOW;
 #endif
 
 	return rc;
@@ -227,7 +267,7 @@ int smk_tskacc(struct task_smack *tsp, struct smack_known *obj_known,
 	/*
 	 * Check the global rule list
 	 */
-	rc = smk_access(sbj_known, obj_known, mode, NULL);
+	rc = smk_may(sbj_known, obj_known, mode);
 	if (rc >= 0) {
 		/*
 		 * If there is an entry in the task's rule list
@@ -255,6 +295,12 @@ out_audit:
 		smack_log(sbj_known->smk_known, obj_known->smk_known,
 			  mode, rc, a);
 #endif
+
+#ifdef CONFIG_SECURITY_SMACK_DEVELOP
+	if (development && rc < 0)
+		rc = SMACK_BRINGUP_ALLOW;
+#endif
+
 	return rc;
 }
 
